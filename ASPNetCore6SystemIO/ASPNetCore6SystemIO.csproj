@@ -12,4 +12,10 @@
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" Version="20.0.4" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Extras\startup.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

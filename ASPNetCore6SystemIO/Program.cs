@@ -1,5 +1,6 @@
 using ASPNetCore6SystemIO.Services;
 using ASPNetCore6SystemIO.Wrapper;
+using System.IO.Abstractions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<IRandomGenerator, RandomGenerator>();
 builder.Services.AddScoped<ILottoService, LottoService>();
 builder.Services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+builder.Services.AddSingleton<IFileSystem, FileSystem>();
 #endregion
 
 var app = builder.Build();

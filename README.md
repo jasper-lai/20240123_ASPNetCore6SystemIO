@@ -28,11 +28,210 @@ Unit Test for Static Elements (System.IO.File.ReadAllText) in ASP.NET Core 6 MVC
 * TestableIO.System.IO.Abstractions.TestingHelpers 20.0.4
   * 主要有一些現成的 mock 類別, 以利測試之用.  
 
+### 步驟_2: 將 IFileSystem 註冊至 DI container
+```csharp
+#region 註冊相關的服務
+builder.Services.AddSingleton<IRandomGenerator, RandomGenerator>();
+builder.Services.AddScoped<ILottoService, LottoService>();
+builder.Services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+builder.Services.AddSingleton<IFileSystem, FileSystem>();
+#endregion
+```
 
+### 步驟_3: 修改 LottoService 的處理邏輯
+
+1.. 修改建構子, 加入 IFileSystem 物件的注入.  
+```csharp
+private readonly IRandomGenerator _randomGenerator;
+private readonly IDateTimeProvider _dateTimeProvider;
+private readonly IFileSystem _fileSystem;
+
+public LottoService(IRandomGenerator randomGenerator, IDateTimeProvider dateTimeProvider, IFileSystem fileSystem) 
+{
+	_randomGenerator = randomGenerator;
+	_dateTimeProvider = dateTimeProvider;
+	_fileSystem = fileSystem;
+}
+```
+
+2.. 修改 Lottoing() 方法, 加入 Extra/startup.txt 的檢查.  
+```csharp
+public LottoViewModel Lottoing(int min, int max)
+{
+
+    var result = new LottoViewModel();
+
+    // -----------------------
+    // 檢核1: 是否為每個月 5 日
+    // -----------------------
+    var now = _dateTimeProvider.GetCurrentTime();
+    if (now.Day != 5)
+    {
+        result.Sponsor = string.Empty;
+        result.YourNumber = -1;
+        result.Message = "非每個月5日, 不開獎";
+        return result;
+    }
+
+    // -----------------------
+    // 檢核2: 主辦人員是否已按下[開始]按鈕
+    // -----------------------
+    // 註: 這裡有可能會出現一些 Exception, 例如: FileNotFoundException
+    var sponsor = string.Empty;
+    try
+    {
+        sponsor = _fileSystem.File.ReadAllText("Extras/startup.txt");
+    }
+    catch (Exception)
+    {
+        result.Sponsor = sponsor;
+        result.YourNumber = -2;
+        result.Message = "主辦人員尚未按下[開始]按鈕";
+        return result;
+    }
+
+    // Random(min, max): 含下界, 不含上界
+    var yourNumber = _randomGenerator.Next(min, max);
+    // 只要餘數是 9, 就代表中獎
+    var message = (yourNumber % 10 == 9) ? "恭喜中獎" : "再接再厲";
+    result.Sponsor = sponsor;
+    result.YourNumber = yourNumber;
+    result.Message = message;
+
+    return result;
+}
+```
+
+### 步驟_4: 修改原有的測試案例
+
+1.. 因為 LottoService 的建構子增加了 IFileSystem 這個參數, 所以, 原有的測試案例, 也要跟著改, 不然會編譯失敗.  
+
+```csharp
+[TestMethod()]
+public void Test_Lottoing_今天是20240105_主辦人宣告開始_輸入亂數範圍_0_10_預期回傳_9_恭喜中獎()
+{
+	// Arrange
+	var expected = new LottoViewModel()
+	{ Sponsor = "傑士伯", YourNumber = 9, Message = "恭喜中獎" }
+				.ToExpectedObject();
+
+	int fixedValue = 9;
+	DateTime today = new(2024, 01, 05);
+	var mockRandomGenerator = new Mock<IRandomGenerator>();
+	var mockDateTimeProvider = new Mock<IDateTimeProvider>();
+	mockRandomGenerator.Setup(r => r.Next(It.IsAny<int>(), It.IsAny<int>())).Returns(fixedValue);
+	mockDateTimeProvider.Setup(d => d.GetCurrentTime()).Returns(today);
+	//
+	var mockFileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ @"Extras/startup.txt", new MockFileData("傑士伯") },
+		}
+	);
+
+
+	// Act
+	var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+	var actual = target.Lottoing(0, 10);
+
+	// Assert
+	expected.ShouldEqual(actual);
+}
+
+
+[TestMethod()]
+public void Test_Lottoing_今天是20240105_主辦人宣告開始_輸入亂數範圍_0_10_預期回傳_1_再接再厲()
+{
+	// Arrange
+	var expected = new LottoViewModel()
+	{ Sponsor="傑士伯", YourNumber = 1, Message = "再接再厲" }
+				.ToExpectedObject();
+
+	int fixedValue = 1;
+	DateTime today = new(2024, 01, 05);
+	var mockRandomGenerator = new Mock<IRandomGenerator>();
+	var mockDateTimeProvider = new Mock<IDateTimeProvider>();
+	mockRandomGenerator.Setup(r => r.Next(It.IsAny<int>(), It.IsAny<int>())).Returns(fixedValue);
+	mockDateTimeProvider.Setup(d => d.GetCurrentTime()).Returns(today);
+	var mockFileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ @"Extras/startup.txt", new MockFileData("傑士伯") },
+		}
+	);
+
+	// Act
+	var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+	var actual = target.Lottoing(0, 10);
+
+	// Assert
+	expected.ShouldEqual(actual);
+}
+
+
+[TestMethod()]
+public void Test_Lottoing_今天是20240122_不論主辦人是否宣告開始_輸入亂數範圍_0_10_預期回傳_負1_非每個月5日_不開獎()
+{
+	// Arrange
+	var expected = new LottoViewModel()
+	{ Sponsor = "", YourNumber = -1, Message = "非每個月5日, 不開獎" }
+				.ToExpectedObject();
+
+	int fixedValue = 9;
+	DateTime today = new(2024, 01, 22);
+	var mockRandomGenerator = new Mock<IRandomGenerator>();
+	var mockDateTimeProvider = new Mock<IDateTimeProvider>();
+	mockRandomGenerator.Setup(r => r.Next(It.IsAny<int>(), It.IsAny<int>())).Returns(fixedValue);
+	mockDateTimeProvider.Setup(d => d.GetCurrentTime()).Returns(today);
+	var mockFileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+		{
+			{ @"Extras/startup.txt", new MockFileData("傑士伯") },
+		}
+	);
+
+	// Act
+	var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+	var actual = target.Lottoing(0, 10);
+
+	// Assert
+	expected.ShouldEqual(actual);
+}
+```
+
+### 步驟_5: 針對有開獎的日期, 但主辦人尚未宣告開始, 建立測試案例
+
+```csharp
+[TestMethod()]
+public void Test_Lottoing_今天是20240105_但主辦人常未宣告開始_輸入亂數範圍_0_10_預期回傳_負2_主辦人員尚未按下開始按鈕()
+{
+    // Arrange
+    var expected = new LottoViewModel()
+    { Sponsor = "", YourNumber = -2, Message = "主辦人員尚未按下[開始]按鈕" }
+                .ToExpectedObject();
+
+    int fixedValue = 1;
+    DateTime today = new(2024, 01, 05);
+    var mockRandomGenerator = new Mock<IRandomGenerator>();
+    var mockDateTimeProvider = new Mock<IDateTimeProvider>();
+    mockRandomGenerator.Setup(r => r.Next(It.IsAny<int>(), It.IsAny<int>())).Returns(fixedValue);
+    mockDateTimeProvider.Setup(d => d.GetCurrentTime()).Returns(today);
+    var mockFileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            //只要不提供檔案路徑, 就會視為 FileNotFound Exception
+            //{ @"startup.txt", new MockFileData("傑士伯") },
+        }
+    );
+
+    // Act
+    var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+    var actual = target.Lottoing(0, 10);
+
+    // Assert
+    expected.ShouldEqual(actual);
+}
+```
 
 ### 步驟_6: 檢查測試的結果
 
-
+![TestResult](pictures/11-TestResult.png)
 
 ## 結論
 

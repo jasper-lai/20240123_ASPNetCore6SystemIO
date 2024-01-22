@@ -1,4 +1,4 @@
-﻿@model  ASPNetCore6SystemIO.ViewModels.LottoViewModel
+﻿@model ASPNetCore6SystemIO.ViewModels.LottoViewModel
 
 @{
     ViewData["Title"] = "樂透開奬結果";
@@ -6,29 +6,30 @@
 
 <h1>樂透開奬結果</h1>
 
+<h3>主辦人: @Model.Sponsor </h3>
 <h3>您的號碼: @Model.YourNumber </h3>
 <h3> @Model.Message </h3>
 
 
 @*@{
-    var yourNumberString = ViewData["YourNumber"]?.ToString();
+        var yourNumberString = ViewData["YourNumber"]?.ToString();
 
-    // Default to 0 if null
-    var yourNumber = yourNumberString != null ? Int32.Parse(yourNumberString) : 0;
-}
-
-
-<h3>您的號碼: @yourNumber </h3>
-
-
-@{
-    if (yourNumber == 9)
-    {
-        <h3>您中獎了!!</h3>
+        // Default to 0 if null
+        var yourNumber = yourNumberString != null ? Int32.Parse(yourNumberString) : 0;
     }
-    else
-    {
-        <h3>再接再厲!!</h3>
-    }
-}*@
+
+
+    <h3>您的號碼: @yourNumber </h3>
+
+
+    @{
+        if (yourNumber == 9)
+        {
+            <h3>您中獎了!!</h3>
+        }
+        else
+        {
+            <h3>再接再厲!!</h3>
+        }
+    }*@
 
