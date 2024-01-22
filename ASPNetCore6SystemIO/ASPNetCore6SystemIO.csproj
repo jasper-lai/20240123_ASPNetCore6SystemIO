@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="6.0.16" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="20.0.4" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" Version="20.0.4" />
   </ItemGroup>
 
 </Project>

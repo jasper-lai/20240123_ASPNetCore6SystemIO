@@ -22,7 +22,12 @@ Unit Test for Static Elements (System.IO.File.ReadAllText) in ASP.NET Core 6 MVC
 
 ## 演練細節
 
-### 步驟_1: 
+### 步驟_1: 安裝以下套件
+* TestableIO.System.IO.Abstractions.Wrappers 20.0.4: 
+  * 用以將 System.IO 的類別, 以 interface 的方式進行打包. 以 System.IO.File 為例, 會有 IFile 介面及 FileWrapper 類別.  
+* TestableIO.System.IO.Abstractions.TestingHelpers 20.0.4
+  * 主要有一些現成的 mock 類別, 以利測試之用.  
+
 
 
 ### 步驟_6: 檢查測試的結果
