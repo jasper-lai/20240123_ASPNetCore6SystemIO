@@ -1,0 +1,247 @@
+﻿<body>
+    <div style="font-size: medium;">
+        <!-- <h2 id="靜態元素-static-elements-的單元測試-以-systemiofilereadalltext-為例">靜態元素 (Static Elements) 的單元測試, 以 System.IO.File.ReadAllText 為例</h2> -->
+        <p>Unit Test for Static Elements (System.IO.File.ReadAllText) in ASP.NET Core 6 MVC</p>
+        <h2 id="前言">前言</h2>
+        <p>接續前一篇 <a href="https://www.jasperstudy.com/2024/01/static-elements-datetimenow.html" target="_blank">樂透開獎(含日期限制)</a> 的例子, 假設有一個新的需求: &quot;樂透開奬有一個前置作業, 必須由主辦人員按下[開始]按鈕, 才能開獎&quot;.</p>
+        <p>本文假設主辦人員按下[開始]按鈕, 會在主機端產生一個檔案 (Extras/startup.txt), 內含主辦人員的姓名.</p>
+        <p>因此, 程式要增加一個讀取檔案內容的動作.</p>
+        <ul>
+            <li>若可讀到 Extras/startup.txt, 才可開獎, 並回傳開獎的結果, 要再加上主辦人員的姓名.</li>
+            <li>若讀不到 Extras/startup.txt, 則不可開獎, 並回傳警告訊息.
+                <ul>
+                    <li>&quot;&quot;, -2, &quot;主辦人員尚未按下[開始]按鈕&quot;. // 第1個空字串, 代表主辦人員的姓名</li>
+                </ul>
+            </li>
+        </ul>
+        <p>這裡很單純的想法, 是用 File.ReadAllText() 的方法, 因為是 static class + static method, 應該要如何建立測試呢?</p>
+        <p>以下係採 參考文件1..及2.. 方式進行演練及實作.</p>
+        <p><a href="https://github.com/jasper-lai/20240123_ASPNetCore6SystemIO" target="_blank">完整範例可由 GitHub 下載.</a></p>
+        <!--more-->
+        <h2 id="演練細節">演練細節</h2>
+        <h3 id="步驟_1-安裝以下套件">步驟_1: 安裝以下套件</h3>
+        <ul>
+            <li>TestableIO.System.IO.Abstractions.Wrappers 20.0.4:
+                <ul>
+                    <li>用以將 System.IO 的類別, 以 interface 的方式進行打包. 以 System.IO.File 為例, 會有 IFile 介面及 FileWrapper 類別.</li>
+                </ul>
+            </li>
+            <li>TestableIO.System.IO.Abstractions.TestingHelpers 20.0.4
+                <ul>
+                    <li>主要有一些現成的 mock 類別, 以利測試之用.</li>
+                </ul>
+            </li>
+        </ul>
+        <h3 id="步驟_2-將-ifilesystem-註冊至-di-container">步驟_2: 將 IFileSystem 註冊至 DI container</h3>
+        <pre><code class="language-csharp">#region 註冊相關的服務
+builder.Services.AddSingleton&lt;IRandomGenerator, RandomGenerator&gt;();
+builder.Services.AddScoped&lt;ILottoService, LottoService&gt;();
+builder.Services.AddSingleton&lt;IDateTimeProvider, DateTimeProvider&gt;();
+builder.Services.AddSingleton&lt;IFileSystem, FileSystem&gt;();
+#endregion
+</code></pre>
+        <h3 id="步驟_3-修改-lottoservice-的處理邏輯">步驟_3: 修改 LottoService 的處理邏輯</h3>
+        <p>1.. 修改建構子, 加入 IFileSystem 物件的注入.</p>
+        <pre><code class="language-csharp">private readonly IRandomGenerator _randomGenerator;
+private readonly IDateTimeProvider _dateTimeProvider;
+private readonly IFileSystem _fileSystem;
+
+public LottoService(IRandomGenerator randomGenerator, IDateTimeProvider dateTimeProvider, IFileSystem fileSystem) 
+{
+    _randomGenerator = randomGenerator;
+    _dateTimeProvider = dateTimeProvider;
+    _fileSystem = fileSystem;
+}
+</code></pre>
+        <p>2.. 修改 Lottoing() 方法, 加入 Extra/startup.txt 的檢查.</p>
+        <pre><code class="language-csharp">public LottoViewModel Lottoing(int min, int max)
+{
+
+    var result = new LottoViewModel();
+
+    // -----------------------
+    // 檢核1: 是否為每個月 5 日
+    // -----------------------
+    var now = _dateTimeProvider.GetCurrentTime();
+    if (now.Day != 5)
+    {
+        result.Sponsor = string.Empty;
+        result.YourNumber = -1;
+        result.Message = &quot;非每個月5日, 不開獎&quot;;
+        return result;
+    }
+
+    // -----------------------
+    // 檢核2: 主辦人員是否已按下[開始]按鈕
+    // -----------------------
+    // 註: 這裡有可能會出現一些 Exception, 例如: FileNotFoundException
+    var sponsor = string.Empty;
+    try
+    {
+        sponsor = _fileSystem.File.ReadAllText(&quot;Extras/startup.txt&quot;);
+    }
+    catch (Exception)
+    {
+        result.Sponsor = sponsor;
+        result.YourNumber = -2;
+        result.Message = &quot;主辦人員尚未按下[開始]按鈕&quot;;
+        return result;
+    }
+
+    // Random(min, max): 含下界, 不含上界
+    var yourNumber = _randomGenerator.Next(min, max);
+    // 只要餘數是 9, 就代表中獎
+    var message = (yourNumber % 10 == 9) ? &quot;恭喜中獎&quot; : &quot;再接再厲&quot;;
+    result.Sponsor = sponsor;
+    result.YourNumber = yourNumber;
+    result.Message = message;
+
+    return result;
+}
+</code></pre>
+        <h3 id="步驟_4-修改原有的測試案例">步驟_4: 修改原有的測試案例</h3>
+        <p>1.. 因為 LottoService 的建構子增加了 IFileSystem 這個參數, 所以, 原有的測試案例, 也要跟著改, 不然會編譯失敗.</p>
+        <pre><code class="language-csharp">[TestMethod()]
+public void Test_Lottoing_今天是20240105_主辦人宣告開始_輸入亂數範圍_0_10_預期回傳_9_恭喜中獎()
+{
+    // Arrange
+    var expected = new LottoViewModel()
+    { Sponsor = &quot;傑士伯&quot;, YourNumber = 9, Message = &quot;恭喜中獎&quot; }
+                .ToExpectedObject();
+
+    int fixedValue = 9;
+    DateTime today = new(2024, 01, 05);
+    var mockRandomGenerator = new Mock&lt;IRandomGenerator&gt;();
+    var mockDateTimeProvider = new Mock&lt;IDateTimeProvider&gt;();
+    mockRandomGenerator.Setup(r =&gt; r.Next(It.IsAny&lt;int&gt;(), It.IsAny&lt;int&gt;())).Returns(fixedValue);
+    mockDateTimeProvider.Setup(d =&gt; d.GetCurrentTime()).Returns(today);
+    //
+    var mockFileSystem = new MockFileSystem(new Dictionary&lt;string, MockFileData&gt;
+        {
+            { @&quot;Extras/startup.txt&quot;, new MockFileData(&quot;傑士伯&quot;) },
+        }
+    );
+
+
+    // Act
+    var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+    var actual = target.Lottoing(0, 10);
+
+    // Assert
+    expected.ShouldEqual(actual);
+}
+
+
+[TestMethod()]
+public void Test_Lottoing_今天是20240105_主辦人宣告開始_輸入亂數範圍_0_10_預期回傳_1_再接再厲()
+{
+    // Arrange
+    var expected = new LottoViewModel()
+    { Sponsor=&quot;傑士伯&quot;, YourNumber = 1, Message = &quot;再接再厲&quot; }
+                .ToExpectedObject();
+
+    int fixedValue = 1;
+    DateTime today = new(2024, 01, 05);
+    var mockRandomGenerator = new Mock&lt;IRandomGenerator&gt;();
+    var mockDateTimeProvider = new Mock&lt;IDateTimeProvider&gt;();
+    mockRandomGenerator.Setup(r =&gt; r.Next(It.IsAny&lt;int&gt;(), It.IsAny&lt;int&gt;())).Returns(fixedValue);
+    mockDateTimeProvider.Setup(d =&gt; d.GetCurrentTime()).Returns(today);
+    var mockFileSystem = new MockFileSystem(new Dictionary&lt;string, MockFileData&gt;
+        {
+            { @&quot;Extras/startup.txt&quot;, new MockFileData(&quot;傑士伯&quot;) },
+        }
+    );
+
+    // Act
+    var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+    var actual = target.Lottoing(0, 10);
+
+    // Assert
+    expected.ShouldEqual(actual);
+}
+
+
+[TestMethod()]
+public void Test_Lottoing_今天是20240122_不論主辦人是否宣告開始_輸入亂數範圍_0_10_預期回傳_負1_非每個月5日_不開獎()
+{
+    // Arrange
+    var expected = new LottoViewModel()
+    { Sponsor = &quot;&quot;, YourNumber = -1, Message = &quot;非每個月5日, 不開獎&quot; }
+                .ToExpectedObject();
+
+    int fixedValue = 9;
+    DateTime today = new(2024, 01, 22);
+    var mockRandomGenerator = new Mock&lt;IRandomGenerator&gt;();
+    var mockDateTimeProvider = new Mock&lt;IDateTimeProvider&gt;();
+    mockRandomGenerator.Setup(r =&gt; r.Next(It.IsAny&lt;int&gt;(), It.IsAny&lt;int&gt;())).Returns(fixedValue);
+    mockDateTimeProvider.Setup(d =&gt; d.GetCurrentTime()).Returns(today);
+    var mockFileSystem = new MockFileSystem(new Dictionary&lt;string, MockFileData&gt;
+        {
+            { @&quot;Extras/startup.txt&quot;, new MockFileData(&quot;傑士伯&quot;) },
+        }
+    );
+
+    // Act
+    var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+    var actual = target.Lottoing(0, 10);
+
+    // Assert
+    expected.ShouldEqual(actual);
+}
+</code></pre>
+        <h3 id="步驟_5-針對有開獎的日期-但主辦人尚未宣告開始-建立測試案例">步驟_5: 針對有開獎的日期, 但主辦人尚未宣告開始, 建立測試案例</h3>
+        <pre><code class="language-csharp">[TestMethod()]
+public void Test_Lottoing_今天是20240105_但主辦人常未宣告開始_輸入亂數範圍_0_10_預期回傳_負2_主辦人員尚未按下開始按鈕()
+{
+    // Arrange
+    var expected = new LottoViewModel()
+    { Sponsor = &quot;&quot;, YourNumber = -2, Message = &quot;主辦人員尚未按下[開始]按鈕&quot; }
+                .ToExpectedObject();
+
+    int fixedValue = 1;
+    DateTime today = new(2024, 01, 05);
+    var mockRandomGenerator = new Mock&lt;IRandomGenerator&gt;();
+    var mockDateTimeProvider = new Mock&lt;IDateTimeProvider&gt;();
+    mockRandomGenerator.Setup(r =&gt; r.Next(It.IsAny&lt;int&gt;(), It.IsAny&lt;int&gt;())).Returns(fixedValue);
+    mockDateTimeProvider.Setup(d =&gt; d.GetCurrentTime()).Returns(today);
+    var mockFileSystem = new MockFileSystem(new Dictionary&lt;string, MockFileData&gt;
+        {
+            //只要不提供檔案路徑, 就會視為 FileNotFound Exception
+            //{ @&quot;startup.txt&quot;, new MockFileData(&quot;傑士伯&quot;) },
+        }
+    );
+
+    // Act
+    var target = new LottoService(mockRandomGenerator.Object, mockDateTimeProvider.Object, mockFileSystem);
+    var actual = target.Lottoing(0, 10);
+
+    // Assert
+    expected.ShouldEqual(actual);
+}
+</code></pre>
+        <h3 id="步驟_6-檢查測試的結果">步驟_6: 檢查測試的結果</h3>
+        <p><img src="https://github.com/jasper-lai/20240123_ASPNetCore6SystemIO/blob/master/pictures/11-TestResult.png?raw=true" alt="TestResult" /></p>
+        <h2 id="結論">結論</h2>
+        <p>System.IO.File 為 static class, System.IO.File.ReadAllText() 為 static method, 故需以一個 interface 進行打包 (Wrap), 讓外界得以操作物件實體, 及其回傳值.</p>
+        <p>由於 System.IO 下的 static class 及 static method 為數不少, 若要自行一一 mock 會很辛苦, 故找到了一些現成的 nuget 套件進行協助.</p>
+        <p>只是, 如同前一篇亂數範例所述的, 也會造成開發人員要習慣使用打包後的介面及類別, 這是比較美中不足的地方.</p>
+        <h2 id="參考文件">參考文件</h2>
+        <ul>
+            <li><a href="https://www.nuget.org/packages/System.IO.Abstractions" target="_blank">1.. (Nuget) System.IO.Abstractions</a></li>
+            <li><a href="https://github.com/TestableIO/System.IO.Abstractions" target="_blank">2.. 上述 nuget 套件的原始程式碼</a></li>
+            <li><a href="https://learn.microsoft.com/en-us/dotnet/api/system.io.file?view=net-6.0" target="_blank">3.. (Microsoft Learn) File Class</a></li>
+        </ul>
+        <blockquote>
+            <p>public static class File</p>
+        </blockquote>
+        <ul>
+            <li><a href="https://learn.microsoft.com/en-us/dotnet/api/system.io.file.readalltext?view=net-6.0" target="_blank">4.. (Microsoft Learn) File.ReadAllText Method</a></li>
+        </ul>
+        <blockquote>
+            <p>public static string ReadAllText (string path);</p>
+        </blockquote>
+        <ul>
+            <li><a href="https://www.ruyut.com/2023/05/testableio.system-io-abstractions.html" target="_blank">5.. (Ruyut 鹿遊) C# 使用 System.IO.Abstractions 套件來模擬檔案</a></li>
+        </ul>
+    </div>
+</body>

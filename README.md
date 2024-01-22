@@ -5,18 +5,18 @@ Unit Test for Static Elements (System.IO.File.ReadAllText) in ASP.NET Core 6 MVC
 
 接續前一篇 <a href="https://www.jasperstudy.com/2024/01/static-elements-datetimenow.html" target="_blank">樂透開獎(含日期限制)</a> 的例子, 假設有一個新的需求:   "樂透開奬有一個前置作業, 必須由主辦人員按下[開始]按鈕, 才能開獎".  
 
-本文假設按下[開始]按鈕, 會在主機端產生一個檔案 (start.txt), 內含主辦人員的姓名.  
+本文假設主辦人員按下[開始]按鈕, 會在主機端產生一個檔案 (Extras/startup.txt), 內含主辦人員的姓名.  
 
 因此, 程式要增加一個讀取檔案內容的動作.  
-* 若可讀到 start.txt, 才可開獎, 並回傳開獎的結果, 要再加上主辦人員的姓名.  
-* 若讀不到 start.txt, 則不可開獎, 並回傳警告訊息.  
+* 若可讀到 Extras/startup.txt, 才可開獎, 並回傳開獎的結果, 要再加上主辦人員的姓名.  
+* 若讀不到 Extras/startup.txt, 則不可開獎, 並回傳警告訊息.  
   * "", -2, "主辦人員尚未按下[開始]按鈕".   // 第1個空字串, 代表主辦人員的姓名
 
-這裡很單純的想法, 是用 File.ReadAllText() 的方法, 因為是 static class + static method 要如何建立測試呢?  
+這裡很單純的想法, 是用 File.ReadAllText() 的方法, 因為是 static class + static method, 應該要如何建立測試呢?  
 
 以下係採 參考文件1..及2.. 方式進行演練及實作.  
 
-完整範例可由 GitHub 下載.
+<a href="https://github.com/jasper-lai/20240123_ASPNetCore6SystemIO" target="_blank">完整範例可由 GitHub 下載.</a>  
 
 <!--more-->
 
@@ -235,6 +235,11 @@ public void Test_Lottoing_今天是20240105_但主辦人常未宣告開始_輸�
 
 ## 結論
 
+System.IO.File 為 static class, System.IO.File.ReadAllText() 為 static method, 故需以一個 interface 進行打包 (Wrap), 讓外界得以操作物件實體, 及其回傳值.  
+
+由於 System.IO 下的 static class 及 static method 為數不少, 若要自行一一 mock 會很辛苦, 故找到了一些現成的 nuget 套件進行協助.  
+
+只是, 如同前一篇亂數範例所述的, 也會造成開發人員要習慣使用打包後的介面及類別, 這是比較美中不足的地方.
 
 ## 參考文件
 
@@ -245,7 +250,4 @@ public void Test_Lottoing_今天是20240105_但主辦人常未宣告開始_輸�
 * <a href="https://learn.microsoft.com/en-us/dotnet/api/system.io.file.readalltext?view=net-6.0" target="_blank">4.. (Microsoft Learn) File.ReadAllText Method</a>  
 > public static string ReadAllText (string path);
 * <a href="https://www.ruyut.com/2023/05/testableio.system-io-abstractions.html" target="_blank">5.. (Ruyut 鹿遊) C# 使用 System.IO.Abstractions 套件來模擬檔案</a>
-
-
-
 
